@@ -1,0 +1,32 @@
+{
+    "name": "unique/yii2-batch-model-saver",
+    "description": "Adds batch model saving functionality to yii2 framework.",
+    "minimum-stability": "stable",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Algirdas Gurevičius",
+            "email": "a.gurevicius@gmail.com"
+        }
+    ],
+    "require": {
+        "php": ">=7.4",
+        "ext-dom": "*",
+        "yiisoft/yii2": "~2.0.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.4"
+    },
+    "autoload": {
+        "psr-4": {
+            "unique\\batchmodelsaver\\": "src/",
+            "unique\\batchmodelsavertest\\": "tests/"
+        }
+    },
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://asset-packagist.org"
+        }
+    ]
+}
