@@ -70,26 +70,27 @@
                 return false;
             }
 
-            if ( $model->beforeSave( $model->isNewRecord ) ) {
+            if ( $model->isNewRecord ) {
 
-                $table_name = $model->tableName();
-                if ( $this->use_table_locks && !isset( $this->locks[ $table_name ] ) ) {
-
-                    $this->locks[ $table_name ] = $table_name . ' WRITE';
-                }
-
-                if ( $model->isNewRecord ) {
+                if ( $model->beforeSave( $model->isNewRecord ) ) {
 
                     $this->create[] = $model;
                 } else {
 
-                    $this->update[] = $model;
+                    return false;
                 }
+            } else {
 
-                return true;
+                $this->update[] = $model;
             }
 
-            return false;
+            $table_name = $model->tableName();
+            if ( $this->use_table_locks && !isset( $this->locks[ $table_name ] ) ) {
+
+                $this->locks[ $table_name ] = $table_name . ' WRITE';
+            }
+
+            return true;
         }
 
         /**
