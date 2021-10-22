@@ -191,20 +191,20 @@
                         ->execute();
                 }
 
-                // No batch insert for update models
-                foreach ( $this->update as $model ) {
-
-                    if ( !$model->save() ) {
-
-                        throw new \Exception( 'Unable to update a model (id=' . $model->id . ', table=' . $model->tableName() . ')' );
-                    }
-                }
-
                 if ( $this->use_table_locks && $tables_locked ) {
 
                     $tables_locked = false;
                     \Yii::$app->db->createCommand( 'UNLOCK TABLES' )
                         ->execute();
+                }
+
+                // No batch insert for update models
+                foreach ( $this->update as $model ) {
+
+                    if ( !$model->save( false ) ) {
+
+                        throw new \Exception( 'Unable to update a model (id=' . $model->id . ', table=' . $model->tableName() . ')' );
+                    }
                 }
 
                 /**
