@@ -50,6 +50,12 @@
         public $use_table_locks = true;
 
         /**
+         * Maximum rows to insert per one operation
+         * @var int
+         */
+        public int $max_rows_to_insert = 1000;
+
+        /**
          * Contains a list of tables to be locked with their lock type. Indexed by table name.
          * Tables are locked during {@see commit()} operation if {@see $use_table_locks} is true.
          * @var array
@@ -137,7 +143,6 @@
 
                 if ( $this->use_table_locks && $this->locks ) {
 
-
                     \Yii::$app->db->createCommand( 'LOCK TABLE ' . implode( ', ', $this->locks ) )
                         ->execute();
                     $tables_locked = true;
@@ -187,9 +192,14 @@
 
                 foreach ( $columns as $table_name => $column_names ) {
 
-                    \Yii::$app->db->createCommand()
-                        ->batchInsert( $table_name, $column_names, $data[ $table_name ] )
-                        ->execute();
+                    do {
+
+                        $batched_data = array_splice( $data[ $table_name ], 0, $this->max_rows_to_insert );
+
+                        \Yii::$app->db->createCommand()
+                            ->batchInsert( $table_name, $column_names, $batched_data )
+                            ->execute();
+                    } while ( count( $data[ $table_name ] ) > 0 );
                 }
 
                 if ( $this->use_table_locks && $tables_locked ) {
@@ -237,15 +247,16 @@
                 }
 
                 throw $error;
+            } finally {
+
+                $this->create = [];
+                $this->update = [];
+                $this->locks = [];
             }
 
             if ( $transaction !== null ) {
 
                 $transaction->commit();
             }
-
-            $this->create = [];
-            $this->update = [];
-            $this->locks = [];
         }
     }
