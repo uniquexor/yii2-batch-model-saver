@@ -2,6 +2,7 @@
     namespace unique\batchmodelsaver;
 
     use yii\db\ActiveRecord;
+    use yii\db\Query;
 
     /**
      * Allows to easily do a batch insert for the models, which gives a huge speed boost, while still maintaining before, after event handling and validation.
@@ -166,15 +167,17 @@
                             throw new \Exception( 'Unable to insert data to tables without auto_increment primary key.' );
                         } else {
 
-                            $keys = $model->primaryKey();
-                            if ( count( $keys ) !== 1 ) {
+                            // We cannot use here the value of Auto_increment, because it might be cached...
 
-                                throw new \Exception( 'Composite primary keys cannot be used for batch insertion.' );
-                            }
+                            $key = reset( $keys );
+                            $value = ( new Query() )
+                                ->select( 'max(' . $key . ')' )
+                                ->from( $table_name )
+                                ->scalar();
 
                             $primary_keys[ $table_name ] = [
-                                'key' => reset( $keys ),
-                                'value' => $metadata['Auto_increment'],
+                                'key' => $key,
+                                'value' => $value + 1,
                             ];
                         }
                     }
