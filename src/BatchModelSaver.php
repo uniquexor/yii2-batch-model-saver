@@ -169,6 +169,12 @@
 
                             // We cannot use here the value of Auto_increment, because it might be cached...
 
+                            $keys = $model->primaryKey();
+                            if ( count( $keys ) !== 1 ) {
+
+                                throw new \Exception( 'Composite primary keys cannot be used for batch insertion.' );
+                            }
+
                             $key = reset( $keys );
                             $value = ( new Query() )
                                 ->select( 'max(' . $key . ')' )
