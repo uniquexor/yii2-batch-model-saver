@@ -268,4 +268,14 @@
                 $transaction->commit();
             }
         }
+
+        /**
+         * Rolls back all models added through {@see addToSaveList()} method.
+         */
+        public function rollback() {
+
+            $this->create = [];
+            $this->update = [];
+            $this->locks = [];
+        }
     }
