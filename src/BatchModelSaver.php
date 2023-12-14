@@ -57,13 +57,6 @@
         public int $max_rows_to_insert = 1000;
 
         /**
-         * Contains a list of tables to be locked with their lock type. Indexed by table name.
-         * Tables are locked during {@see commit()} operation if {@see $use_table_locks} is true.
-         * @var array
-         */
-        protected $locks = [];
-
-        /**
          * Validates the model and calls beforeSave() method on it.
          * If everything passes, it is added to the list of models to be saved on {@see commit()} call.
          * @param ActiveRecord $model
@@ -77,11 +70,13 @@
                 return false;
             }
 
+            $table_name = $model->tableName();
+
             if ( $model->isNewRecord ) {
 
                 if ( $model->beforeSave( $model->isNewRecord ) ) {
 
-                    $this->create[] = $model;
+                    $this->create[ $table_name ][] = $model;
                 } else {
 
                     return false;
@@ -89,12 +84,6 @@
             } else {
 
                 $this->update[] = $model;
-            }
-
-            $table_name = $model->tableName();
-            if ( $this->use_table_locks && !isset( $this->locks[ $table_name ] ) ) {
-
-                $this->locks[ $table_name ] = $table_name . ' WRITE';
             }
 
             return true;
@@ -135,87 +124,90 @@
              */
             $update_insert_models = [];
 
-            /**
-             * Are the tables locked and need to be released?
-             */
-            $tables_locked = false;
-
             try {
 
-                if ( $this->use_table_locks && $this->locks ) {
+                foreach ( $this->create as $table_name => $models ) {
 
-                    \Yii::$app->db->createCommand( 'LOCK TABLE ' . implode( ', ', $this->locks ) )
-                        ->execute();
-                    $tables_locked = true;
-                }
-
-                // Prepare the models to be inserted, by forming a $data entry for every table and setting the PKs.
-                foreach ( $this->create as $index => $model ) {
-
-                    $attributes = $model->getAttributes();
-                    $table_name = $model->tableName();
-
-                    if ( !isset( $columns[ $table_name ] ) ) {
-
-                        $columns[ $table_name ] = array_keys( $attributes );
-
-                        $metadata = \Yii::$app->db->createCommand( 'SHOW TABLE STATUS like \'' . $table_name . '\'' )
-                            ->queryOne();
-
-                        if ( $metadata['Auto_increment'] === null ) {
-
-                            throw new \Exception( 'Unable to insert data to tables without auto_increment primary key.' );
-                        } else {
-
-                            // We cannot use here the value of Auto_increment, because it might be cached...
-
-                            $keys = $model->primaryKey();
-                            if ( count( $keys ) !== 1 ) {
-
-                                throw new \Exception( 'Composite primary keys cannot be used for batch insertion.' );
-                            }
-
-                            $key = reset( $keys );
-                            $value = ( new Query() )
-                                ->select( 'max(' . $key . ')' )
-                                ->from( $table_name )
-                                ->scalar();
-
-                            $primary_keys[ $table_name ] = [
-                                'key' => $key,
-                                'value' => $value + 1,
-                            ];
-                        }
-                    }
-
-                    $update_insert_models[ $index ] = $model->getDirtyAttributes();
-
-                    if ( !isset( $attributes[ $primary_keys[ $table_name ]['key'] ] ) ) {
-
-                        $update_insert_models[ $index ][ $primary_keys[ $table_name ][ 'key' ] ] = $primary_keys[ $table_name ][ 'value' ];
-                        $attributes[ $primary_keys[ $table_name ][ 'key' ] ] = $primary_keys[ $table_name ][ 'value' ]++;
-                    }
-
-                    $data[ $table_name ][] = array_values( $attributes );
-                }
-
-                foreach ( $columns as $table_name => $column_names ) {
-
-                    do {
-
-                        $batched_data = array_splice( $data[ $table_name ], 0, $this->max_rows_to_insert );
-
-                        \Yii::$app->db->createCommand()
-                            ->batchInsert( $table_name, $column_names, $batched_data )
-                            ->execute();
-                    } while ( count( $data[ $table_name ] ) > 0 );
-                }
-
-                if ( $this->use_table_locks && $tables_locked ) {
-
+                    /**
+                     * Are the tables locked and need to be released?
+                     */
                     $tables_locked = false;
-                    \Yii::$app->db->createCommand( 'UNLOCK TABLES' )
-                        ->execute();
+
+                    if ( $this->use_table_locks ) {
+
+                        \Yii::$app->db->createCommand( 'LOCK TABLE ' . $table_name . ' WRITE' )
+                            ->execute();
+                        $tables_locked = true;
+                    }
+
+                    // Prepare the models to be inserted, by forming a $data entry for every table and setting the PKs.
+                    foreach ( $models as $index => $model ) {
+
+                        $attributes = $model->getAttributes();
+                        $table_name = $model->tableName();
+
+                        if ( !isset( $columns[ $table_name ] ) ) {
+
+                            $columns[ $table_name ] = array_keys( $attributes );
+
+                            $metadata = \Yii::$app->db->createCommand( 'SHOW TABLE STATUS like \'' . $table_name . '\'' )
+                                ->queryOne();
+
+                            if ( $metadata[ 'Auto_increment' ] === null ) {
+
+                                throw new \Exception( 'Unable to insert data to tables without auto_increment primary key.' );
+                            } else {
+
+                                // We cannot use here the value of Auto_increment, because it might be cached...
+
+                                $keys = $model->primaryKey();
+                                if ( count( $keys ) !== 1 ) {
+
+                                    throw new \Exception( 'Composite primary keys cannot be used for batch insertion.' );
+                                }
+
+                                $key = reset( $keys );
+                                $value = ( new Query() )
+                                    ->select( 'max(' . $key . ')' )
+                                    ->from( $table_name )
+                                    ->scalar();
+
+                                $primary_keys[ $table_name ] = [
+                                    'key' => $key,
+                                    'value' => $value + 1,
+                                ];
+                            }
+                        }
+
+                        $update_insert_models[ $table_name ][ $index ] = $model->getDirtyAttributes();
+
+                        if ( !isset( $attributes[ $primary_keys[ $table_name ][ 'key' ] ] ) ) {
+
+                            $update_insert_models[ $table_name ][ $index ][ $primary_keys[ $table_name ][ 'key' ] ] = $primary_keys[ $table_name ][ 'value' ];
+                            $attributes[ $primary_keys[ $table_name ][ 'key' ] ] = $primary_keys[ $table_name ][ 'value' ]++;
+                        }
+
+                        $data[ $table_name ][] = array_values( $attributes );
+                    }
+
+                    foreach ( $columns as $table_name => $column_names ) {
+
+                        do {
+
+                            $batched_data = array_splice( $data[ $table_name ], 0, $this->max_rows_to_insert );
+
+                            \Yii::$app->db->createCommand()
+                                ->batchInsert( $table_name, $column_names, $batched_data )
+                                ->execute();
+                        } while ( count( $data[ $table_name ] ) > 0 );
+                    }
+
+                    if ( $this->use_table_locks && $tables_locked ) {
+
+                        $tables_locked = false;
+                        \Yii::$app->db->createCommand( 'UNLOCK TABLES' )
+                            ->execute();
+                    }
                 }
 
                 // No batch insert for update models
@@ -230,17 +222,20 @@
                 /**
                  * Finish with created models. Mostly perform actions found in {@see \yii\db\ActiveRecord::insertInternal()} method.
                  */
-                foreach ( $this->create as $index => $model ) {
+                foreach ( $this->create as $table_name => $models ) {
 
-                    $table_name = $model->tableName();
-                    if ( isset( $update_insert_models[ $index ][ $primary_keys[ $table_name ][ 'key' ] ] ) ) {
+                    foreach ( $models as $index => $model ) {
 
-                        $model->setAttribute( $primary_keys[ $model->tableName() ]['key'], $update_insert_models[ $index ][ $primary_keys[ $table_name ][ 'key' ] ] );
+                        $update_insert_model = $update_insert_models[ $table_name ][ $index ];
+                        if ( isset( $update_insert_model[ $primary_keys[ $table_name ][ 'key' ] ] ) ) {
+
+                            $model->setAttribute( $primary_keys[ $model->tableName() ][ 'key' ], $update_insert_model[ $primary_keys[ $table_name ][ 'key' ] ] );
+                        }
+
+                        $changed_attributes = array_fill_keys( array_keys( $update_insert_model ), null );
+                        $model->setOldAttributes( $update_insert_model );
+                        $model->afterSave( true, $changed_attributes );
                     }
-
-                    $changed_attributes = array_fill_keys( array_keys( $update_insert_models[ $index ] ), null );
-                    $model->setOldAttributes( $update_insert_models[ $index ] );
-                    $model->afterSave( true, $changed_attributes );
                 }
             } catch ( \Throwable $error ) {
 
@@ -260,7 +255,6 @@
 
                 $this->create = [];
                 $this->update = [];
-                $this->locks = [];
             }
 
             if ( $transaction !== null ) {
@@ -276,6 +270,5 @@
 
             $this->create = [];
             $this->update = [];
-            $this->locks = [];
         }
     }
